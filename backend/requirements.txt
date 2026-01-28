@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+sqlalchemy
+python-dotenv
+python-multipart
+python-jose[cryptography]
+passlib[bcrypt]
+pydantic
+email-validator
+requests
+pymongo
+chromadb
+sentence-transformers
+pypdf
+gunicorn

@@ -1,0 +1,150 @@
+import React, { useState, useEffect } from 'react';
+import API_URL from '../apiConfig';
+import { BarChart2 } from 'lucide-react';
+import CandidateTable from '../components/CandidateTable';
+import ConfirmationModal from '../components/ConfirmationModal';
+
+const ScreenedCandidates = () => {
+    const [candidates, setCandidates] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [confirmation, setConfirmation] = useState({ isOpen: false, title: '', message: '', type: 'info', onConfirm: null });
+    const [error, setError] = useState(null);
+
+    const fetchCandidates = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const response = await fetch(`${API_URL}/api/resume/candidates/`, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setCandidates(data.filter(c => c.stage === 'Resume Screening'));
+            } else {
+                throw new Error(`Server returned ${response.status} ${response.statusText}`);
+            }
+        } catch (err) {
+            console.error("Failed to fetch candidates", err);
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchCandidates();
+    }, []);
+
+    const handlePromote = async (candidateIds, stage) => {
+        if (!candidateIds || candidateIds.length === 0) return;
+
+        // Check recommendation
+        const selected = candidates.filter(c => candidateIds.includes(c.id));
+        const notRecommended = selected.filter(c => (c.score || 0) < 60);
+
+        let message = `Promote ${candidateIds.length} candidate(s) to ${stage === 'NEXT' ? 'their respective NEXT stages' : stage}?`;
+        if (notRecommended.length > 0) {
+            message = `WARNING: ${notRecommended.length} candidate(s) are NOT Recommended by AI (<60%).\n\n` + message;
+        }
+
+        setConfirmation({
+            isOpen: true,
+            title: 'Confirm Promotion',
+            message: message,
+            type: notRecommended.length > 0 ? 'warning' : 'info',
+            confirmText: 'Promote Candidates',
+            onConfirm: () => executePromote(candidateIds, stage)
+        });
+    };
+
+    const executePromote = async (candidateIds, stage) => {
+        try {
+            const res = await fetch(`${API_URL}/api/resume/candidates/bulk-update/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({
+                    candidate_ids: candidateIds,
+                    stage: stage || 'NEXT'
+                })
+            });
+
+            if (res.ok) {
+                alert('Candidates promoted successfully!');
+                fetchCandidates();
+            } else {
+                const errorData = await res.json();
+                alert(`Failed to promote: ${errorData.detail || 'Unknown error'}`);
+            }
+        } catch (error) {
+            console.error("Promotion failed:", error);
+            alert('An error occurred during promotion.');
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-gray-50 pb-12">
+            <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+                {/* Header Section */}
+                <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
+                    <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                            <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Screened Candidates</h1>
+                            <p className="text-gray-500 text-sm mt-2 max-w-2xl">
+                                AI-analyzed candidate pool awaiting action. Select candidates to promote to the next stage or manage their status.
+                            </p>
+                        </div>
+                        <div className="bg-gradient-to-br from-blue-50 to-blue-100 text-blue-700 px-5 py-3 rounded-xl text-sm font-bold border border-blue-200 flex items-center gap-2 shadow-sm">
+                            <BarChart2 size={18} className="text-blue-600" />
+                            <div className="flex flex-col items-start">
+                                <span className="text-xs text-blue-600 uppercase tracking-wide">Total</span>
+                                <span className="text-2xl font-extrabold text-blue-700">{candidates.length}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {error && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <span className="font-bold">Connection Error:</span> {error}
+                        </div>
+                        <button
+                            onClick={fetchCandidates}
+                            className="text-sm underline hover:text-red-800"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                )}
+
+                <CandidateTable
+                    candidates={candidates}
+                    currentStage="Screened Candidates"
+                    onRefresh={fetchCandidates}
+                    showRoleColumn={true}
+                    showAnalyticsAction={true}
+                    showRecommendation={true}
+                    enableScoreFilter={true}
+                    enableStatusFilter={false}
+                    enableRecommendationFilter={true}
+                    onPromote={handlePromote}
+                />
+
+                <ConfirmationModal
+                    isOpen={confirmation.isOpen}
+                    onClose={() => setConfirmation({ ...confirmation, isOpen: false })}
+                    onConfirm={confirmation.onConfirm}
+                    title={confirmation.title}
+                    message={confirmation.message}
+                    type={confirmation.type}
+                    confirmText={confirmation.confirmText}
+                />
+            </div>
+        </div>
+    );
+};
+
+export default ScreenedCandidates;
